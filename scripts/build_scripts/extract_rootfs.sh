@@ -10,9 +10,24 @@
 # On success the destination holds a raw ext2/3/4 image and EXTRACTED_ROOTFS_SIZE is
 # set to its size in bytes. The caller owns the destination; the scratch directory
 # used along the way is removed before returning.
+_EXTRACT_ROOTFS_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 extract_rootfs() {
     _firmware="$1"
     _dest="$2"
+    _magic="$(dd if="$_firmware" bs=4 count=1 status=none)"
+
+    if [ "$_magic" = "AZ0x" ]; then
+        echo "--- extracting named rootfs payload from AZ0x firmware ---"
+        if ! EXTRACTED_ROOTFS_SIZE="$(python3 "$_EXTRACT_ROOTFS_SCRIPT_DIR/extract_az0x_rootfs.py" \
+                "$_firmware" "$_dest")"; then
+            rm -f "$_dest"
+            return 1
+        fi
+        echo "--- extracted verified rootfs ($((EXTRACTED_ROOTFS_SIZE / 1024 / 1024)) MiB) ---"
+        return 0
+    fi
+
     _scratch="$(mktemp -d /tmp/qengine-extract.XXXXXX)"
 
     echo "--- extracting $_firmware with binwalk (this scans the whole image, ~10s+) ---"
