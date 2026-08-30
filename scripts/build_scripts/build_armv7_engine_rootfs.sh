@@ -274,6 +274,14 @@ block_telemetry /mnt/rootfs
 blank_root_password /mnt/rootfs
 skip_firmware_update /mnt/rootfs
 
+# Opt-in SSH: enable sshd and install the caller's key, so a developer can ssh
+# into the guest instead of the serial console. Off unless SSH_AUTHORIZED_KEYS
+# was provided, because the firmware ships sshd disabled and an always-on sshd on
+# a blanked-password image is a foot-gun if the image is ever shared.
+if [ -n "${SSH_AUTHORIZED_KEYS:-}" ]; then
+    install_ssh /mnt/rootfs
+fi
+
 install_virgl_mesa "$MESA_LAYOUT" "$MESA_VERSION" /mnt/rootfs /stage
 
 #
@@ -393,6 +401,7 @@ docker run --rm --privileged \
     -e PRODUCT_CODE="${PRODUCT_CODE:-JP07}" \
     -e MESA_LAYOUT="$MESA_LAYOUT" \
     -e MESA_VERSION="$MESA_VERSION" \
+    -e SSH_AUTHORIZED_KEYS="${SSH_AUTHORIZED_KEYS:-}" \
     -v "$OUT_DIR:/out" \
     -v "$SHIMS_DIR:/shims:ro" \
     -v "$STAGE_DIR:/stage:ro" \

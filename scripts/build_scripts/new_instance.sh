@@ -10,6 +10,7 @@
 #
 # Usage: new_instance.sh --name <name> --firmware <image>
 #                        [--device <engine|mpc>] [--size <bytes>] [--force]
+#                        [--ssh-key <pubkey file>]
 #   --name      instance name, e.g. rmz2-5.0.4 or mpc-3.9.1
 #   --device    which device family the firmware is for. Optional: when omitted it
 #               is identified from the firmware itself, which costs one extra
@@ -28,6 +29,10 @@
 #               builder's default. Omit to keep what this instance already has, or
 #               to take the builder's default on a new instance.
 #   --force     rebuild the rootfs even if this instance already has one
+#   --ssh-key   path to an OpenSSH public key to install for root. Opt-in: also
+#               enables sshd (the firmware ships it disabled). The key content is
+#               passed to the builder as SSH_AUTHORIZED_KEYS and recorded in
+#               instance.env so a later --force rebuild keeps it.
 #
 # The kernel and initrd are deliberately *not* per-instance: they are generic
 # distro kernels, identical for every instance of the same architecture. This script
@@ -49,6 +54,7 @@ FIRMWARE=""
 SIZE=""
 FORCE=0
 PRODUCT_CODE_ARG=""
+SSH_KEY_FILE=""
 
 
 while [ $# -gt 0 ]; do
@@ -58,6 +64,7 @@ while [ $# -gt 0 ]; do
         --firmware) FIRMWARE="$2"; shift 2 ;;
         --size) SIZE="$2"; shift 2 ;;
         --product-code) PRODUCT_CODE_ARG="$2"; shift 2 ;;
+        --ssh-key) SSH_KEY_FILE="$2"; shift 2 ;;
         --force) FORCE=1; shift ;;
         *) echo "ERROR: unrecognized argument: $1" >&2; exit 1 ;;
     esac
@@ -290,6 +297,22 @@ fi
 # already have, and it keeps this script out of the business of knowing which
 # defaults belong to which family.
 if [ -n "$PRODUCT_CODE" ]; then export PRODUCT_CODE; fi
+
+# Same opt-in pattern as --product-code: read the key up front and hand it to the
+# builder over the environment. The key is stored beside instance.env in its own
+# file rather than as a variable in it: a public key contains spaces, so writing
+# it into the sourced instance.env would be parsed as a shell command on the next
+# boot. The file makes a --force rebuild keep SSH enabled without that.
+if [ -n "$SSH_KEY_FILE" ]; then
+    [ -f "$SSH_KEY_FILE" ] || { echo "ERROR: SSH key file not found: $SSH_KEY_FILE" >&2; exit 1; }
+    SSH_AUTHORIZED_KEYS="$(cat "$SSH_KEY_FILE")"
+elif [ -f "$INSTANCE_DIR/ssh_authorized_keys" ]; then
+    SSH_AUTHORIZED_KEYS="$(cat "$INSTANCE_DIR/ssh_authorized_keys")"
+fi
+if [ -n "$SSH_AUTHORIZED_KEYS" ]; then
+    export SSH_AUTHORIZED_KEYS
+    printf '%s\n' "$SSH_AUTHORIZED_KEYS" > "$INSTANCE_DIR/ssh_authorized_keys"
+fi
 
 STAMP="$INSTANCE_DIR/.rootfs.complete"
 
